@@ -25,7 +25,7 @@ provider "nginx" {
 provider "aws" {
  region = var.region
 }
-#----------------------------------------------------------
+#-------------------------------------------------------------
 data "aws_availability_zones" "available" {}
 data "aws_ami" "latest_amazon_linux" { 
   owners      = ["137112412989"]
@@ -35,7 +35,7 @@ data "aws_ami" "latest_amazon_linux" {
     values = ["amzn2-ami-kernel-5.10-hvm-*-x86_64-gp2"]
   }
 }
-#----------------------------------------------------------
+#-------------------------------------------------------------
 resource "aws_launch_configuration" "my_webserver" {
   name_prefix                 = "WebServer-Highly-Available-LC-"
   image_id                    = data.aws_ami.latest_amazon_linux.id
