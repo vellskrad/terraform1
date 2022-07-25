@@ -1,24 +1,15 @@
 #----------------------------------------------------------
 # My Terraform
-#
+# Прекрасный код с ужасным описанием.
 # Made by Yaroslav
 #----------------------------------------------------------
 terraform {
   required_providers {
-    mysql = {
-      source = "petoju/mysql"
-      version = "3.0.13"
-    }
     nginx = {
       source = "getstackhead/nginx"
       version = "1.3.2"
     }
   }
-}
-provider "mysql" {
-  endpoint = "${aws_db_instance.default.endpoint}"
-  username = "${aws_db_instance.default.username}"
-  password = "${aws_db_instance.default.password}"
 }
 provider "nginx" {
 }
@@ -41,7 +32,7 @@ resource "aws_launch_configuration" "my_webserver" {
   image_id                    = data.aws_ami.latest_amazon_linux.id
   instance_type               = var.instance_type
   security_groups             = [aws_security_group.my_sg.id]
-  key_name                    = aws_key_pair.deployer.key_name
+  key_name                    = "00ead9ea8f0092c1d" #aws_key_pair.deployer.key_name
   associate_public_ip_address = false
   user_data                   = file("user_data.sh")
   #Создает новый ресурс прежде чем убивать старый
@@ -49,10 +40,10 @@ resource "aws_launch_configuration" "my_webserver" {
     create_before_destroy = true
   }
 }
-resource "aws_key_pair" "deployer" {
-  key_name   = "deployer-key"
-  public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQD3F6tyPEFEzV0LX3X8BsXdMsQz1x2cEikKDEY0aIj41qgxMCP/iteneqXSIFZBp5vizPvaoIR3Um9xK7PGoW8giupGn+EPuxIA4cDM4vzOqOkiMPhz5XK0whEjkVzTo4+S0puvDZuwIsdiW9mxhJc7tgBNL0cYlWSYVkz4G/fslNfRPW5mYAM49f4fhtxPb5ok4Q2Lg9dPKVHO/Bgeu5woMc7RY0p1ej6D4CKFE6lymSDJpW0YHX/wqE9+cfEauh7xZcG0q9t2ta6F6fmX0agvpFyZo8aFbXeUBr7osSCJNgvavWbM/06niWrOvYX2xwWdhXmXSrbX8ZbabVohBK41 email@example.com"
-}
+#resource "aws_key_pair" "deployer" {
+#  key_name   = "deployer-key"
+#  public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQD3F6tyPEFEzV0LX3X8BsXdMsQz1x2cEikKDEY0aIj41qgxMCP/iteneqXSIFZBp5vizPvaoIR3Um9xK7PGoW8giupGn+EPuxIA4cDM4vzOqOkiMPhz5XK0whEjkVzTo4+S0puvDZuwIsdiW9mxhJc7tgBNL0cYlWSYVkz4G/fslNfRPW5mYAM49f4fhtxPb5ok4Q2Lg9dPKVHO/Bgeu5woMc7RY0p1ej6D4CKFE6lymSDJpW0YHX/wqE9+cfEauh7xZcG0q9t2ta6F6fmX0agvpFyZo8aFbXeUBr7osSCJNgvavWbM/06niWrOvYX2xwWdhXmXSrbX8ZbabVohBK41 email@example.com"
+#}
 #------------------------Security Group----------------------------------
 resource "aws_security_group" "my_sg" {
   name   = "Base Security Group"
@@ -123,7 +114,7 @@ resource "aws_db_subnet_group" "default" {
 resource "aws_subnet" "public_az1" {
   availability_zone       = data.aws_availability_zones.available.names[0]
   vpc_id                  = aws_vpc.vpc1.id
-  cidr_block              = "10.0.1.0/24"
+  cidr_block              = "10.0.0.0/24"
   map_public_ip_on_launch = true
   depends_on              = [aws_internet_gateway.main]
   tags = {
@@ -183,10 +174,10 @@ resource "aws_nat_gateway" "main" {
   depends_on = [aws_internet_gateway.main]
 }
 #----------------------------------------------------------
-resource "aws_placement_group" "test" {
-  name     = "test"
-  strategy = "spread"
-}
+#resource "aws_placement_group" "test" {
+#  name     = "test"
+#  strategy = "spread"
+#}
 resource "aws_autoscaling_group" "my_webserver" {
   name                 = "ASG-${aws_launch_configuration.my_webserver.name}"
   launch_configuration = aws_launch_configuration.my_webserver.name
@@ -194,7 +185,7 @@ resource "aws_autoscaling_group" "my_webserver" {
   max_size             = 2
   min_elb_capacity     = 2
   health_check_type    = "EC2"
-  placement_group      = aws_placement_group.test.id
+#  placement_group      = aws_placement_group.test.id
   vpc_zone_identifier  = [aws_subnet.public_az1.id, aws_subnet.private_az2.id]
 
   dynamic "tag" {
