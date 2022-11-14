@@ -16,6 +16,20 @@ provider "nginx" {
 provider "aws" {
  region = var.region
 }
+resource "local_file" "servers" {
+  filename = "../ansible/hosts"
+  content = templatefile("./servers.tmpl", {
+    ip = data.aws_instances.my_inst.public_ips[0]
+  })
+}
+
+resource "null_resource" "ansible" {
+  provisioner "local-exec" {
+    working_dir = "../ansible"
+    command     = "ansible-playbook -i hosts wp.yaml"
+  }
+  depends_on = [local_file.servers, local_file.wp_config]
+}
 #-------------------------------------------------------------
 data "aws_availability_zones" "available" {}
 data "aws_ami" "latest_amazon_linux" { 
@@ -26,19 +40,24 @@ data "aws_ami" "latest_amazon_linux" {
     values = ["amzn2-ami-kernel-5.10-hvm-*-x86_64-gp2"]
   }
 }
+data "template_file" "user_data" {
+  template = file("./install.sh")
+}
 #-------------------------------------------------------------
 resource "aws_launch_configuration" "my_webserver" {
   name_prefix                 = "WebServer-Highly-Available-LC-"
   image_id                    = data.aws_ami.latest_amazon_linux.id
   instance_type               = var.instance_type
   security_groups             = [aws_security_group.my_sg.id]
-  key_name                    = "00ead9ea8f0092c1d" #aws_key_pair.deployer.key_name
+  key_name                    = "Key-pairs-mdd" #aws_key_pair.deployer.key_name
   associate_public_ip_address = false
-  user_data                   = file("user_data.sh")
+  user_data                   = data.template_file.user_data.rendered
   #Создает новый ресурс прежде чем убивать старый
   lifecycle {
     create_before_destroy = true
   }
+  depends_on = [aws_security_group.my_sg, data.aws_ami.latest_amazon_linux]
+
 }
 #resource "aws_key_pair" "deployer" {
 #  key_name   = "deployer-key"
@@ -76,6 +95,13 @@ resource "aws_security_group" "NFS_sg" {
     cidr_blocks = [var.vpc_cidr]
     }
 
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   tags = merge(var.common_tags, { Name = "${var.common_tags["base"]} for EFS" })
 }
 resource "aws_security_group" "DB" {
@@ -89,7 +115,32 @@ resource "aws_security_group" "DB" {
     cidr_blocks = [var.vpc_cidr]
     }
 
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   tags = merge(var.common_tags, { Name = "${var.common_tags["base"]} for EFS" })
+}
+resource "aws_security_group" "SG_for_ELB" {
+  name   = "Security Group for ELB"
+  vpc_id = aws_vpc.vpc1.id
+ 
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    }
+  egress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags = merge(var.common_tags, { Name = "${var.common_tags["base"]} for ELB" })
 }
 #----------------------------------------------------------
 resource "aws_vpc" "vpc1" {
@@ -162,6 +213,7 @@ resource "aws_internet_gateway" "main" {
     Owner   = var.common_tags["Owner"]
     Project = var.common_tags["Project"]
   }
+  depends_on = [aws_vpc.vpc1]
 }
 resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.bar.id
@@ -182,7 +234,7 @@ resource "aws_autoscaling_group" "my_webserver" {
   name                 = "ASG-${aws_launch_configuration.my_webserver.name}"
   launch_configuration = aws_launch_configuration.my_webserver.name
   min_size             = 2
-  max_size             = 2
+  max_size             = 4
   min_elb_capacity     = 2
   health_check_type    = "EC2"
 #  placement_group      = aws_placement_group.test.id
@@ -251,3 +303,34 @@ resource "aws_network_interface" "foo" {
     Project = var.common_tags["Project"]
   }
 }
+#---------------------------------------------------------------
+resource "aws_elb" "my_elb" {
+  name               = "My-ELB"
+  security_groups    = [aws_security_group.SG_for_ELB.id]
+  subnets            = [aws_subnet.public_az1.id, aws_subnet.public_az2.id]
+
+  listener {
+    instance_port     = 80
+    instance_protocol = "http"
+    lb_port           = 80
+    lb_protocol       = "http"
+  }
+
+  health_check {
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 5
+    target              = "HTTP:80/"
+    interval            = 20
+  }
+
+  cross_zone_load_balancing   = true
+  idle_timeout                = 60
+  depends_on = [aws_security_group.SG_for_ELB]
+
+  tags = {
+    Name = "My_ELB"
+  }
+}
+#---------------------------------------------------------------
+
